@@ -1,49 +1,74 @@
-# Auto-hunt ARM VPS on Oracle Cloud
+# Đặt file này tại: .github/workflows/hunt-oracle-arm.yml (trên nhánh mặc định, thường là main)
 name: Hunt Oracle ARM VPS
+
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/5 * * * *'   # giữ lịch 5 phút/lần như file cũ
   workflow_dispatch:
+
+# Không cho 2 lượt chạy chồng nhau
+concurrency:
+  group: hunt-oracle-arm
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write   # để tự tắt workflow khi tạo VPS thành công
 
 jobs:
   launch-vps:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+      OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+      OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+      OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+      OCI_IMAGE_ID: ${{ secrets.OCI_IMAGE_ID }}
+      OCI_SUBNET_ID: ${{ secrets.OCI_SUBNET_ID }}
+      OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
+      OCPUS: '1'        # cấu hình thấp nhất để dễ săn
+      MEM_GB: '6'
     steps:
       - name: Cau hinh OCI CLI
         run: |
           mkdir -p ~/.oci
-          echo "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/oci_api_key.pem
+          printf '%s\n' "$OCI_PRIVATE_KEY" > ~/.oci/oci_api_key.pem
           chmod 600 ~/.oci/oci_api_key.pem
-          cat <<EOF > ~/.oci/config
+          cat > ~/.oci/config <<EOF
           [DEFAULT]
-          user=${{ secrets.OCI_USER_OCID }}
-          fingerprint=${{ secrets.OCI_FINGERPRINT }}
-          tenancy=${{ secrets.OCI_TENANCY_OCID }}
+          user=$OCI_USER_OCID
+          fingerprint=$OCI_FINGERPRINT
+          tenancy=$OCI_TENANCY_OCID
           region=ap-singapore-1
-          key_file=~/.oci/oci_api_key.pem
+          key_file=$HOME/.oci/oci_api_key.pem
           EOF
+          printf '%s\n' "$OCI_SSH_PUBLIC_KEY" > ~/ssh_key.pub
           pip install -q oci-cli
 
-      - name: Gui yeu cau tao VPS ARM (4 lan/luot)
+      - name: Gui yeu cau tao VPS ARM
         run: |
-          AD_NAME=$(oci iam availability-domain list --compartment-id "${{ secrets.OCI_TENANCY_OCID }}" --query "data[0].name" --raw-output)
-          for i in {1..4}; do
-            echo "=== Lan thu $i/4 tai $AD_NAME ==="
+          AD_NAME=$(oci iam availability-domain list --compartment-id "$OCI_TENANCY_OCID" --query "data[0].name" --raw-output)
+          for i in 1 2 3 4; do
+            echo "=== Lan thu $i/4 tai $AD_NAME (${OCPUS} OCPU / ${MEM_GB} GB) ==="
             if oci --no-retry compute instance launch \
               --availability-domain "$AD_NAME" \
-              --compartment-id "${{ secrets.OCI_TENANCY_OCID }}" \
+              --compartment-id "$OCI_TENANCY_OCID" \
               --shape "VM.Standard.A1.Flex" \
-              --shape-config '{"ocpus": 2, "memoryInGBs": 12}' \
+              --shape-config "{\"ocpus\": ${OCPUS}, \"memoryInGBs\": ${MEM_GB}}" \
               --display-name "VPS-Always-Free-ARM" \
-              --image-id "${{ secrets.OCI_IMAGE_ID }}" \
-              --subnet-id "${{ secrets.OCI_SUBNET_ID }}" \
+              --image-id "$OCI_IMAGE_ID" \
+              --subnet-id "$OCI_SUBNET_ID" \
               --assign-public-ip true \
-              --metadata '{"ssh_authorized_keys": "${{ secrets.OCI_SSH_PUBLIC_KEY }}"}'; then
-              echo "TAO VPS THANH CONG!"
+              --ssh-authorized-keys-file ~/ssh_key.pub; then
+              echo "TAO VPS THANH CONG! Tu tat workflow de khong tao them may."
+              gh workflow disable "$GITHUB_WORKFLOW" --repo "$GITHUB_REPOSITORY" || true
               exit 0
             fi
-            if [ $i -lt 4 ]; then
+            if [ "$i" -lt 4 ]; then
               sleep 60
             fi
           done
-          exit 1
+          echo "Het tai nguyen, se thu lai o luot sau."
+          exit 0   # luot khong thanh cong van tinh la chay xong, tranh email bao loi lien tuc
