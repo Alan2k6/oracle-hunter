@@ -33,4 +33,5 @@ jobs:
             --display-name "VPS-Always-Free-ARM" \
             --image-id "${{ secrets.OCI_IMAGE_ID }}" \
             --subnet-id "${{ secrets.OCI_SUBNET_ID }}" \
-            --assign-public-ip true
+            --assign-public-ip true \
+            --metadata '{"ssh_authorized_keys": "${{ secrets.OCI_SSH_PUBLIC_KEY }}"}'
