@@ -1,7 +1,7 @@
 name: Hunt Oracle ARM VPS
 on:
   schedule:
-    - cron: '*/12 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -23,17 +23,24 @@ jobs:
           EOF
           pip install -q oci-cli
 
-      - name: Gui yeu cau tao VPS ARM
+      - name: Gui yeu cau tao VPS ARM (10 lan/luot)
         run: |
           AD_NAME=$(oci iam availability-domain list --compartment-id "${{ secrets.OCI_TENANCY_OCID }}" --query "data[0].name" --raw-output)
-          echo "Dang san tai AD: $AD_NAME"
-          oci --no-retry compute instance launch \
-            --availability-domain "$AD_NAME" \
-            --compartment-id "${{ secrets.OCI_TENANCY_OCID }}" \
-            --shape "VM.Standard.A1.Flex" \
-            --shape-config '{"ocpus": 2, "memoryInGBs": 12}' \
-            --display-name "VPS-Always-Free-ARM" \
-            --image-id "${{ secrets.OCI_IMAGE_ID }}" \
-            --subnet-id "${{ secrets.OCI_SUBNET_ID }}" \
-            --assign-public-ip true \
-            --metadata '{"ssh_authorized_keys": "${{ secrets.OCI_SSH_PUBLIC_KEY }}"}'
+          for i in {1..10}; do
+            echo "=== Lan thu $i/10 tai $AD_NAME ==="
+            if oci --no-retry compute instance launch \
+              --availability-domain "$AD_NAME" \
+              --compartment-id "${{ secrets.OCI_TENANCY_OCID }}" \
+              --shape "VM.Standard.A1.Flex" \
+              --shape-config '{"ocpus": 2, "memoryInGBs": 12}' \
+              --display-name "VPS-Always-Free-ARM" \
+              --image-id "${{ secrets.OCI_IMAGE_ID }}" \
+              --subnet-id "${{ secrets.OCI_SUBNET_ID }}" \
+              --assign-public-ip true \
+              --metadata '{"ssh_authorized_keys": "${{ secrets.OCI_SSH_PUBLIC_KEY }}"}'; then
+              echo "TAO VPS THANH CONG!"
+              exit 0
+            fi
+            sleep 25
+          done
+          exit 1
