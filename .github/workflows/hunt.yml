@@ -25,8 +25,10 @@ jobs:
 
       - name: Gui yeu cau tao VPS ARM
         run: |
+          AD_NAME=$(oci iam availability-domain list --compartment-id "${{ secrets.OCI_TENANCY_OCID }}" --query "data[0].name" --raw-output)
+          echo "Dang san tai AD: $AD_NAME"
           oci --no-retry compute instance launch \
-            --availability-domain "KqYx:AP-SINGAPORE-1-AD-1" \
+            --availability-domain "$AD_NAME" \
             --compartment-id "${{ secrets.OCI_TENANCY_OCID }}" \
             --shape "VM.Standard.A1.Flex" \
             --shape-config '{"ocpus": 2, "memoryInGBs": 12}' \
